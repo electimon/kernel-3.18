@@ -27,11 +27,28 @@
 //#include <mach/mt_pm_ldo.h>
 //#include <mach/mt_typedefs.h>
 //#include <mach/mt_boot.h>
-#include <mach/gpio_const.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
 #include <asm/atomic.h>
+
+//#define DEBUG_NETLINK
+
+#ifdef DEBUG_NETLINK
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <net/sock.h>
+#include <net/netlink.h>
+#include <linux/skbuff.h>
+#include <linux/netlink.h>
+#include <net/sock.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/ip.h>
+#include <linux/tcp.h> 
+#include <linux/icmp.h>
+#include <linux/udp.h>
+#endif
 
 //#include "cust_gpio_usage.h"
 
@@ -45,12 +62,8 @@
 #define PLATFORM_ID					0
 #define PLATFORM_MODULE				0
 #define ENGINEER_ID					0
-#define TPD_I2C_NUMBER           	0
-#define GPIO_CTP_EINT_PIN       (GPIO85|0x80000000)
-#define GPIO_CTP_RST_PIN        (GPIO68|0x80000000)
+#define TPD_I2C_NUMBER           	2
 
-#define P_GPIO_CTP_EINT_PIN       85
-#define P_GPIO_CTP_RST_PIN        68
 
 #define IC2120						1
 
@@ -92,7 +105,7 @@
 
 #ifdef ILI_UPDATE_FW
 #define UPDATE_THREADE
-//#define FORCE_UPDATE
+#define FORCE_UPDATE
 #endif
 
 #ifdef CLOCK_INTERRUPT
@@ -119,9 +132,9 @@
 #define TPD_KEYS        {KEY_MENU, KEY_HOMEPAGE, KEY_BACK, KEY_SEARCH}
 #define TPD_KEYS_DIM    {{key_1,50,30},{key_2,50,30},{key_3,50,30},{key_4,50,30}}
 //#endif
-//#define DBG_FLAG
-#define DBG(fmt, args...)   if (1==1)printk("%s(%d): " fmt, __func__,__LINE__,  ## args)
-#define DBG_CO(fmt, args...)   if (1==1)printk("%s: " fmt, "ilitek",  ## args)
+//#define DBG_FLAG 
+#define DBG(fmt, args...)   if (DBG_FLAG)printk("%s(%d): " fmt, __func__,__LINE__,  ## args)
+#define DBG_CO(fmt, args...)   if (DBG_FLAG||DBG_COR)printk("%s: " fmt, "ilitek",  ## args)
 
 
 
@@ -215,8 +228,8 @@ struct i2c_data {
 	int release_flag[10];
 };
 
-#define TPD_RES_X		1200
-#define TPD_RES_Y		720
+#define TPD_RES_X		1080
+#define TPD_RES_Y		1920
 
 #define VIRTUAL_FUN_1	1	//0X81 with key_id
 #define VIRTUAL_FUN_2	2	//0x81 with x position

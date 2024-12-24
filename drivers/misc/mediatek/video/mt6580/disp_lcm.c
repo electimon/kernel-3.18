@@ -198,13 +198,6 @@ disp_lcm_handle *disp_lcm_probe(char *plcm_name, LCM_INTERFACE_ID lcm_id)
 			DISPMSG("LCM not init\n");
 		} else {
 			lcm_drv = lcm_driver_list[0];
-			if (strcmp(lcm_drv->name, plcm_name)) {
-				DISPERR
-				    ("FATAL ERROR!!!LCM Driver defined in kernel(%s) is different with LK(%s)\n",
-				     lcm_drv->name, plcm_name);
-				return NULL;
-			}
-
 			isLCMInited = true;
 			isLCMFound = true;
 		}

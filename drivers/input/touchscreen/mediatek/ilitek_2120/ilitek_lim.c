@@ -1,19 +1,16 @@
 #include "ilitek_ts.h"
+
+#ifdef DEBUG_NETLINK
+bool debug_flag = false;
+#endif
+
 #include "ilitek_fw.h"
-
-#include <mach/gpio_const.h>
-//#include <mt-plat/mt_gpio.h>
-
 #if !IC2120
 static bool serial23 = false;
 #endif
 extern struct tpd_device *tpd;
-#ifdef CONFIG_MTK_I2C_EXTENSION
 static u8 *I2CDMABuf_va = NULL;
 static dma_addr_t I2CDMABuf_pa = 0;
-#else
-static char I2CDMABuf[4096];
-#endif
 //static u32 I2CDMABuf_pa = 0;
 
 //static struct i2c_client *i2c_client = NULL;
@@ -43,13 +40,22 @@ int gesture_count,getstatus;
 #endif
 #endif
 
+#ifdef DEBUG_NETLINK
+//bool debug_flag = false;
+struct sock *netlink_sock;
+static kuid_t	uid;
+static int pid = 100, seq = 23/*, sid*/;
+#endif
+
+
+
 #ifdef ILI_UPDATE_FW
 	#ifdef UPDATE_THREADE
 	static int update_wait_flag = 0;
 	#endif
 	extern unsigned char CTPM_FW[];
 	extern int ilitek_upgrade_firmware(void);
-#endif
+#endif //ILI_UPDATE_FW
 
 
 #ifdef TOOL
@@ -141,8 +147,8 @@ static struct touch_vitual_key_map_t touch_key_point_maping_array[] = {{key_1},{
 
 
 char EXCHANG_XY = 0;
-char REVERT_X = 1; //jackymao
-char REVERT_Y = 0;
+char REVERT_X = 0;
+char REVERT_Y = 1;
 char DBG_FLAG = 0,DBG_COR;
 //#define ROTATE_FLAG
 
@@ -201,6 +207,71 @@ static struct i2c_driver ilitek_ts_driver =
 	.id_table = tpd_i2c_id,                             
 	.address_list = (const unsigned short*) forces,                        
 }; 
+
+
+#ifdef DEBUG_NETLINK
+//bool debug_flag = false;
+//static struct sock *netlink_sock;
+
+static void udp_reply(int pid,int seq,void *payload,int size)
+{
+	struct sk_buff	*skb;
+	struct nlmsghdr	*nlh;
+	int		len = NLMSG_SPACE(size);
+	void		*data;
+	int ret;
+	skb = alloc_skb(len, GFP_ATOMIC);
+	if (!skb)
+		return;
+	printk("ilitek udp_reply\n");
+	nlh= nlmsg_put(skb, pid, seq, 0, size, 0);
+	nlh->nlmsg_flags = 0;
+	data=NLMSG_DATA(nlh);
+	memcpy(data, payload, size);
+	NETLINK_CB(skb).portid = 0;         /* from kernel */
+	NETLINK_CB(skb).dst_group = 0;  /* unicast */
+	ret=netlink_unicast(netlink_sock, skb, pid, MSG_DONTWAIT);
+	if (ret <0)
+	{
+		printk("ilitek send failed\n");
+		return;
+	}
+	return;
+
+}
+
+/* Receive messages from netlink socket. */
+
+static void udp_receive(struct sk_buff  *skb)
+{
+	void			*data;
+	uint8_t buf[64] = {0};
+	struct nlmsghdr *nlh;
+
+	nlh = (struct nlmsghdr *)skb->data;
+	pid  = 100;//NETLINK_CREDS(skb)->pid;
+	uid  = NETLINK_CREDS(skb)->uid;
+	//sid  = NETLINK_CB(skb).sid;
+	seq  = 23;//nlh->nlmsg_seq;
+	data = NLMSG_DATA(nlh);
+	//printk("recv skb from user space uid:%d pid:%d seq:%d,sid:%d\n",uid,pid,seq,sid);
+	if(!strcmp(data,"Hello World!"))
+	{
+		printk("recv skb from user space pid:%d seq:%d\n",pid,seq);
+		printk("data is :%s\n",(char *)data);
+		udp_reply(pid,seq,data,sizeof("Hello World!"));
+		//udp_reply(pid,seq,data);
+	}
+	else
+	{
+		memcpy(buf,data,64);
+	}
+	//kfree(data);
+	return ;
+}
+#endif
+
+
 
 void ilitek_reset(void)
 {
@@ -319,7 +390,6 @@ static int ilitek_dma_i2c_read(struct i2c_client *client, unsigned char *buf, in
 {
 	int i = 0, err = 0;
 
-#ifdef CONFIG_MTK_I2C_EXTENSION
 	if(len < 8)
 	{
 		client->addr = client->addr & I2C_MASK_FLAG;
@@ -343,20 +413,6 @@ static int ilitek_dma_i2c_read(struct i2c_client *client, unsigned char *buf, in
 				
 		return err;
 	}
-#else
-    if (len < 8)
-        return i2c_master_recv(client, buf, len);
-
-    err = i2c_master_recv(client, (unsigned char *)(uintptr_t) I2CDMABuf, len);
-    if (err < 0)
-        return err;
-
-
-    for (i = 0; i < len; i++)
-        buf[i] = I2CDMABuf[i];
-
-	return err;
-#endif
 }
 
 
@@ -364,7 +420,6 @@ static int ilitek_dma_i2c_read(struct i2c_client *client, unsigned char *buf, in
 static int ilitek_dma_i2c_write(struct i2c_client *client, unsigned char *pbt_buf, int dw_len)
 {
 	int i = 0;
-#ifdef CONFIG_MTK_I2C_EXTENSION
 	for(i = 0 ; i < dw_len; i++)
 	{
 		I2CDMABuf_va[i] = pbt_buf[i];
@@ -380,16 +435,6 @@ static int ilitek_dma_i2c_write(struct i2c_client *client, unsigned char *pbt_bu
 		client->addr = (client->addr & I2C_MASK_FLAG) | I2C_DMA_FLAG;
 		return i2c_master_send(client, (u8 *)I2CDMABuf_pa, dw_len);
 	}
-#else
-    for (i = 0; i < dw_len; i++)
-        I2CDMABuf[i] = pbt_buf[i];
-
-    if (dw_len < 8)
-        return i2c_master_send(client, pbt_buf, dw_len);
-
-    return i2c_master_send(client, (unsigned char *)(uintptr_t) I2CDMABuf, dw_len);
-
-#endif
 }
 
 int ilitek_i2c_transfer(struct i2c_client *client, struct i2c_msg *msgs, int cnt)
@@ -399,11 +444,9 @@ int ilitek_i2c_transfer(struct i2c_client *client, struct i2c_msg *msgs, int cnt
 	{
 		if(msgs[i].len <= 8)
 		{
-		#ifdef CONFIG_MTK_I2C_EXTENSION
 			msgs[i].addr &= I2C_MASK_FLAG;
 			msgs[i].timing = 400;		 
 			msgs[i].ext_flag = 0;  
-		#endif
 			while(count >= 0)
 			{
 				count-= 1;
@@ -423,9 +466,7 @@ int ilitek_i2c_transfer(struct i2c_client *client, struct i2c_msg *msgs, int cnt
 		}	 
 		else
 		{
-			#ifdef CONFIG_MTK_I2C_EXTENSION
 			msgs[i].ext_flag = 0;
-			#endif
 			if(msgs[i].flags == I2C_M_RD)				
 			ret = ilitek_dma_i2c_read(client,msgs[i].buf,msgs[i].len);
 			else if(msgs[i].flags == 0)
@@ -977,6 +1018,17 @@ static int ilitek_report_data_2120_new(void) {
 #endif
 	buf[0] = ILITEK_TP_CMD_READ_DATA;
 	ret = ilitek_i2c_write_and_read(i2c.client, buf, 1, 0, buf, 53);
+	
+#ifdef DEBUG_NETLINK
+		if (debug_flag) {
+			udp_reply(pid,seq,buf,sizeof(buf));
+		}
+		if (buf[1] == 0x5F) {
+			return 0;
+		}
+#endif
+
+	
 	len = buf[0];
 	
 	if (ret < 0) {
@@ -998,87 +1050,45 @@ static int ilitek_report_data_2120_new(void) {
 #if GESTURE == GESTURE_2120
 	if (ilitek_system_resume == 0) {
 		DBG("ilitek gesture wake up 0x%x, 0x%x, 0x%x\n", buf[0], buf[1], buf[2]);
-		switch(buf[2]) {
-			case 0x60:
-				DBG("gesture wake up this is c\n");
-				input_report_key(i2c.input_dev, KEY_C, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_C, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x62:
-				DBG("gesture wake up this is e\n");
-				input_report_key(i2c.input_dev, KEY_E, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_E, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x64:
-				DBG("gesture wake up this is m\n");
-				input_report_key(i2c.input_dev, KEY_M, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_M, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x66:
-				DBG("gesture wake up this is w\n");
-				input_report_key(i2c.input_dev, KEY_W, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_W, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x68:
-				DBG("gesture wake up this is o\n");
-				input_report_key(i2c.input_dev, KEY_O, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_O, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x84:
-				DBG("gesture wake up this is slide right\n");
-				input_report_key(i2c.input_dev, KEY_RIGHT, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_RIGHT, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x8c:
-				DBG("gesture wake up this is slide left\n");
-				input_report_key(i2c.input_dev, KEY_LEFT, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_LEFT, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x88:
-				DBG("gesture wake up this is slide down\n");
-				input_report_key(i2c.input_dev, KEY_DOWN, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_DOWN, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x80:
-				DBG("gesture wake up this is slide up\n");
-				input_report_key(i2c.input_dev, KEY_UP, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_UP, 0);
-				input_sync(i2c.input_dev);
-				break;
-			case 0x22:
-				DBG("gesture wake up this is duble click\n");
-				input_report_key(i2c.input_dev, KEY_D, 1);
-				input_sync(i2c.input_dev);
-				input_report_key(i2c.input_dev, KEY_D, 0);
-				input_sync(i2c.input_dev);
-				break;
-			default:
-				DBG("no support this gesture!\n");
-				break;
+		if (buf[2] == 0x60) {
+			DBG("ilitek gesture wake up this is c\n");
+			input_report_key(i2c.input_dev, KEY_C, 1);
+			input_sync(i2c.input_dev);
+			input_report_key(i2c.input_dev, KEY_C, 0);
+			input_sync(i2c.input_dev);
 		}
-		#if 1
+		if (buf[2] == 0x62) {
+			DBG("ilitekgesture wake up this is e\n");
+			input_report_key(i2c.input_dev, KEY_E, 1);
+			input_sync(i2c.input_dev);
+			input_report_key(i2c.input_dev, KEY_E, 0);
+			input_sync(i2c.input_dev);
+		}
+		if (buf[2] == 0x64) {
+			DBG("gesture wake up this is m\n");
+			input_report_key(i2c.input_dev, KEY_M, 1);
+			input_sync(i2c.input_dev);
+			input_report_key(i2c.input_dev, KEY_M, 0);
+			input_sync(i2c.input_dev);
+		}
+		if (buf[2] == 0x66) {
+			DBG("ilitek gesture wake up this is w\n");
+			input_report_key(i2c.input_dev, KEY_W, 1);
+			input_sync(i2c.input_dev);
+			input_report_key(i2c.input_dev, KEY_W, 0);
+			input_sync(i2c.input_dev);
+		}
+		if (buf[2] == 0x68) {
+			DBG("ilitek gesture wake up this is o\n");
+			input_report_key(i2c.input_dev, KEY_O, 1);
+			input_sync(i2c.input_dev);
+			input_report_key(i2c.input_dev, KEY_O, 0);
+			input_sync(i2c.input_dev);
+		}
 		input_report_key(i2c.input_dev, KEY_POWER, 1);
 		input_sync(i2c.input_dev);
 		input_report_key(i2c.input_dev, KEY_POWER, 0);
 		input_sync(i2c.input_dev);
-		#endif
 		return 0;
 	}
 #endif
@@ -1744,12 +1754,13 @@ static void ilitek_i2c_irq_work_queue_func(struct work_struct *work)
 		return;
 	}
 	#endif
-	#endif*/
+	#endif //ILI_UPDATE_FW
+	*/
 		printk("ilitek 1i2c.irq_status=%d\n",i2c.irq_status);
 	if(i2c.irq_status ==1){
-		mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
+		//mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 		printk("ilitek disable nosync 11111\n");
-//		disable_irq_nosync(touch_irq);
+		disable_irq_nosync(touch_irq);
 		printk("ilitek disable nosync 22222\n");
 		i2c.irq_status = 0;
 	}
@@ -1831,7 +1842,7 @@ static int ilitek_i2c_update_thread(void *arg)
 	return ret;
 }
 #endif
-#endif
+#endif //ILI_UPDATE_FW
 #ifdef CLOCK_INTERRUPT
 #ifdef REPORT_THREAD
 
@@ -1925,16 +1936,17 @@ static int ilitek_handle_irqorpolling(void) {
 	if(i2c.irq_work_queue)
 	{
 		INIT_WORK(&i2c.irq_work, ilitek_i2c_irq_work_queue_func);
-			mt_set_gpio_mode(GPIO_CTP_EINT_PIN, GPIO_CTP_EINT_PIN_M_EINT);
+/*			mt_set_gpio_mode(GPIO_CTP_EINT_PIN, GPIO_CTP_EINT_PIN_M_EINT);
 			mt_set_gpio_dir(GPIO_CTP_EINT_PIN, GPIO_DIR_IN);
 			mt_set_gpio_pull_enable(GPIO_CTP_EINT_PIN, GPIO_PULL_DISABLE);
 			mt_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
 			   mt_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, EINTF_TRIGGER_FALLING, ilitek_i2c_isr, 1); 
 			msleep(50);
-			mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
-/*	node = of_find_matching_node(NULL, touch_of_match);
+			mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);*/
+	node = of_find_matching_node(NULL, touch_of_match);
 	if (node) {
 		touch_irq = irq_of_parse_and_map(node, 0);
+		i2c.client->irq = touch_irq;
 		ret = request_irq(touch_irq,
 				  (irq_handler_t)ilitek_i2c_isr,
 				  IRQF_TRIGGER_FALLING,
@@ -1944,11 +1956,11 @@ static int ilitek_handle_irqorpolling(void) {
 			ret = -1;
 			printk("tpd request_irq IRQ LINE NOT AVAILABLE!.");
 		}
-	}*/
-	 mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
+	}
+	/* mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM); */
 			i2c.valid_irq_request = 1;
 			i2c.irq_status = 1;
-//	enable_irq(touch_irq);			
+	enable_irq(touch_irq);			
 
 			msleep(10);
 	
@@ -1973,7 +1985,7 @@ int ilitek_i2c_read_tp_info( void)
 	int res_len = 0;
 	#endif
 	#if IC2120
-		for (i = 0; i < 20; i++) {
+		for (i = 0; i < 3; i++) {
 			buf[0] = 0x10;
 			ilitek_i2c_write_and_read(i2c.client, buf, 1, 10, buf, 3);
 			printk("ilitek %s, write 0x10 read buf = %X, %X, %X\n", __func__, buf[0], buf[1], buf[2]);
@@ -1981,7 +1993,7 @@ int ilitek_i2c_read_tp_info( void)
 				printk("FW is ready  ok ok \n");
 				break;
 			}else {
-				msleep(50);
+				msleep(1);
 			}
 		}
 		//read firmware version
@@ -2215,7 +2227,7 @@ void ilitek_i2c_suspend(struct device *h)
 		return;
 	}
 #endif
-#endif
+#endif //ILI_UPDATE_FW
 #ifdef GESTURE	
 #if GESTURE == GESTURE_2120
 	ilitek_system_resume = 0;
@@ -2317,7 +2329,7 @@ void ilitek_i2c_resume(struct device *h)
 		return;
 	}
 	#endif
-	#endif
+	#endif //ILI_UPDATE_FW
 	pr_err("i2c.reset_request_success = %d\n", i2c.reset_request_success);
 	//if(i2c.reset_request_success)
 	//{
@@ -2351,6 +2363,37 @@ void ilitek_i2c_resume(struct device *h)
 #endif //end of HALL_CHECK
 
 }
+#define OPENNODE 1
+#if OPENNODE
+static ssize_t ilitek_fwversion_show(struct device *dev,struct device_attribute *attr,char* const buf)
+{
+  ssize_t num_read_chars = 0;
+  unsigned char bufs[64] = {0};
+  bufs[0] = ILITEK_TP_CMD_READ_DATA_CONTROL;
+  bufs[1] = ILITEK_TP_CMD_GET_FIRMWARE_VERSION;
+  if(ilitek_i2c_write_and_read(i2c.client, bufs, 2, 10, bufs, 0) < 0)
+  {
+    return -1;
+  }
+  bufs[0] = ILITEK_TP_CMD_GET_FIRMWARE_VERSION;
+  if(ilitek_i2c_write_and_read(i2c.client, bufs, 1, 10, bufs, 3) < 0)
+  {
+    return -1;
+  }
+  printk(ILITEK_ERROR_LEVEL "%s firmware version:%d,%d,%d\n",__func__,bufs[0],bufs[1],bufs[2]);
+  num_read_chars = snprintf(buf, PAGE_SIZE, "FIRMWARE VERSION:%x.%x.%x\n",bufs[0],bufs[1],bufs[2]);
+  return num_read_chars;
+}
+static DEVICE_ATTR(fwversion, 0755, ilitek_fwversion_show, NULL);
+static struct attribute *ilitek_create_node[] = {
+	&dev_attr_fwversion.attr,
+	NULL
+};
+static struct attribute_group ilitek_attribute_group = {
+	.attrs = ilitek_create_node,
+};
+#endif //OPENNODE
+
 /*
    description
    when adapter detects the i2c device, this function will be invoked.
@@ -2365,6 +2408,14 @@ void ilitek_i2c_resume(struct device *h)
 static int ilitek_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
+
+#ifdef DEBUG_NETLINK
+		struct netlink_kernel_cfg cfg = {
+			.groups = 0,
+			.input	= udp_receive,
+		};
+#endif
+
 	int ret = 0;
 	#if ILI_HAVE_TOUCH_KEY
 		s32 idx = 0;
@@ -2376,10 +2427,9 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 	#ifndef FORCE_UPDATE
 	int i = 0;
 	#endif
-	#endif
+	#endif //ILI_UPDATE_FW
 	pr_err("Enter ilitek_i2c_probe +++++++++++++++ addr = 0x%x\n",client->addr);
-	printk("Enter ilitek_i2c_probe +++++++++++++++ addr = 0x%x\n",client->addr);
-	client->addr = 0x41;
+	//client->addr = 0x41;
 	if(!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)){
 		printk(ILITEK_ERROR_LEVEL "%s, I2C_FUNC_I2C not support\n", __func__);
 		return -1;
@@ -2432,7 +2482,6 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 	msleep(200);
 	
 	//register dma
-	#ifdef CONFIG_MTK_I2C_EXTENSION
     tpd->dev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	I2CDMABuf_va = (u8 *)dma_alloc_coherent(&tpd->dev->dev, 4096, &I2CDMABuf_pa, GFP_KERNEL);
 	//I2CDMABuf_va = (u8 *)dma_alloc_coherent(NULL, 4096, &I2CDMABuf_pa, GFP_KERNEL);
@@ -2447,9 +2496,6 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 	}
     memset(I2CDMABuf_va, 0, 4096);
 	i2c.client->ext_flag |= I2C_DMA_FLAG;
-	#else
-	memset(I2CDMABuf, 0x00, sizeof(I2CDMABuf));
-	#endif
 
 	// read touch parameter
 	ret = ilitek_i2c_read_tp_info();
@@ -2538,7 +2584,7 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 	#endif
 #else
 	ret = 1;
-#endif
+#endif//ILI_UPDATE_FW
 
 	i2c.valid_input_register = 1;
 	
@@ -2572,7 +2618,6 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 	input_set_capability(i2c.input_dev, EV_KEY, KEY_C);
 	input_set_capability(i2c.input_dev, EV_KEY, KEY_E);
 	input_set_capability(i2c.input_dev, EV_KEY, KEY_M);
-	device_init_wakeup(&client->dev, 1);
 #endif
 
 #ifdef TOOL
@@ -2604,6 +2649,15 @@ static int ilitek_i2c_probe(struct i2c_client *client,
 #endif 
 
 	ilitek_set_finish_init_flag();
+
+#ifdef DEBUG_NETLINK
+		netlink_sock = netlink_kernel_create(&init_net,21,&cfg);
+#endif
+#if OPENNODE
+    if ((ret = sysfs_create_group(&client->dev.kobj, &ilitek_attribute_group))) {
+          printk("create attr fail\n");
+    }
+#endif //OPENNODE
 	return 0;
 }
 
@@ -2697,8 +2751,6 @@ static int ilitek_init(void)
 		return ret;
 	}
 
-	printk("%s:Exit(%d)",__func__,ret);
-
 	return 0;
 }
 
@@ -2710,7 +2762,6 @@ static int tpd_i2c_detect(struct i2c_client *client, struct i2c_board_info *info
 
 static int tpd_local_init(void) 
 {
-	int ret=0;
 	printk("\n@@@ilitek func :%s, line :%d", __func__, __LINE__);
 	tpd_gpio_as_int(GTP_INT_PORT);
 	/*	
@@ -2720,24 +2771,21 @@ static int tpd_local_init(void)
 	//power on, need confirm with SA
 
     // power up sequence
-#if 1
-#if !defined(CONFIG_MTK_LEGACY)
-	tpd->reg = regulator_get(tpd->tpd_dev, "vtouch");
-	if (IS_ERR(tpd->reg))
-		printk("ilitek -regulator_get() failed!\n");
 
-	ret = regulator_set_voltage(tpd->reg, 2800000, 2800000);	/* set 2.8v */
-	if (ret)
-		printk("regulator_set_voltage() failed!\n");
-	ret = regulator_enable(tpd->reg);	/* enable regulator */
-	if (ret)
-		printk("regulator_enable() failed!\n");
-#else
+#ifdef CONFIG_TPD_POWER_SOURCE_VIA_VGP
+    ret = regulator_set_voltage(tpd->reg, 2800000, 2800000);    /* set 2.8v */
+    if (ret)
+        GTP_DEBUG("regulator_set_voltage() failed!\n");
+    ret = regulator_enable(tpd->reg);   /* enable regulator */
+    if (ret)
+        GTP_DEBUG("regulator_enable() failed!\n");
 
-        hwPowerOn(TPD_POWER_SOURCE_CUSTOM, VOL_2800, "TP");
 #endif
+
+#ifdef VANZO_TPD_POWER_SOURCE_VIA_EXT_LDO
+    tpd_ldo_power_enable(1);
 #endif
-	//mt_set_gpio_out(GPIO251, GPIO_OUT_ONE);
+
     // this two lines is power on
 	/* hwPowerOn(TPD_POWER_SOURCE, VOL_2800, "TP"); */
 	msleep(50);    
@@ -2783,8 +2831,8 @@ static int agold_tpd_set_sensitivity(unsigned long arg)
 
 	}
 	printk("[mu] arg = %d, state = %d\n", arg, state);
-	mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM); 
-//	disable_irq(touch_irq);
+	//mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM); 
+	disable_irq(touch_irq);
 	struct i2c_msg msg[] = {
 		{
 			.addr	= i2c.client->addr,
@@ -2809,8 +2857,8 @@ static int agold_tpd_set_sensitivity(unsigned long arg)
 		//ilitek_i2c_read(i2c.client, 0xb3, &buffer, 1);
 		//printk("whl buffer in funtion=%x\n !",buffer);
 	}
-//	enable_irq(touch_irq);
-	mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
+	enable_irq(touch_irq);
+	//mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
 	return 0;
 }
 #endif
@@ -2830,7 +2878,6 @@ static struct tpd_driver_t tpd_device_driver =
 	.tpd_set_sensitivity = agold_tpd_set_sensitivity,
 	#endif	
 };
-
 static int __init tpd_driver_init(void)
 {
 	printk("ilitek MediaTek ilitek touch panel driver init\n");

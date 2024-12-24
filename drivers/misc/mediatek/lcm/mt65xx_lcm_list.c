@@ -480,10 +480,6 @@ LCM_DRIVER *lcm_driver_list[] = {
 	&hx8392a_dsi_cmd_fwvga_lcm_drv,
 #endif
 
-#if defined(HX8392A_DSI_CMD_FWVGAP)
-	&hx8392a_dsi_cmd_fwvgap_lcm_drv,
-#endif
-
 #if defined(HX8392A_DSI_CMD_QHD)
 	&hx8392a_dsi_cmd_qhd_lcm_drv,
 #endif
@@ -1045,6 +1041,7 @@ LCM_DRIVER *lcm_driver_list[] = {
 #if defined(AUO_WUXGA_DSI_VDO)
 	&auo_wuxga_dsi_vdo_lcm_drv,
 #endif
+	&oradt_hd720_dsi_cmd_lcm_drv,
 };
 
 unsigned char lcm_name_list[][128] = {
@@ -1094,6 +1091,7 @@ unsigned char lcm_name_list[][128] = {
 #if defined(R63417_FHD_DSI_CMD_TRULY_NT50358_HDPLUS)
 	"r63417_fhd_dsi_cmd_truly_nt50358_hdplus_drv",
 #endif
+	"oradt_hd720_dsi_cmd_drv",
 };
 
 #define LCM_COMPILE_ASSERT(condition) LCM_COMPILE_ASSERT_X(condition, __LINE__)

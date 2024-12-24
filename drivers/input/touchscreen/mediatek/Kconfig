@@ -186,4 +186,17 @@ config TOUCHSCREEN_LGE_FT8707
 	  connected to your system.
 	  To compile this dirver as a module, choose M here: the
 	  module will be called.
+
+config TOUCHSCREEN_MTK_ILITEK_2120
+	bool "FT5X0X for Mediatek package"
+	default n
+	help
+	  Say Y here if you have FT5X0X touch panel.
+
+	  If unsure, say N.
+
+	  To compile this dirver as a module, choose M here: the
+	  module will be called.
+
+source "drivers/input/touchscreen/mediatek/ilitek_2120/Kconfig"
 endif

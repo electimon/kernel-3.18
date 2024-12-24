@@ -17,9 +17,9 @@
 #include <dt-bindings/mmc/mt6580-msdc.h>
 #include <generated/autoconf.h>
 
-#ifdef CONFIG_MTK_DTBO_FEATURE
+//#ifdef CONFIG_MTK_DTBO_FEATURE
 /dts-v1/;
-#endif
+//#endif
 
 / {
 	model = "MT6580";
@@ -30,7 +30,7 @@
 
 	/* chosen */
 	chosen: chosen {
-		bootargs = "console=tty0 console=ttyMT0,921600n1 root=/dev/ram initrd=0x84000000,0x400000 loglevel=8";
+		bootargs = "log_buf_len=12m console=tty0 console=ttyMT0,921600n1 root=/dev/ram initrd=0x84000000,0x400000 loglevel=8 log_buf_len=8m";
 	};
 
 	/* Do not put any bus before mtk-msdc, because it should be mtk-msdc.0 for partition device node usage */
@@ -775,7 +775,6 @@
 
 		touch: touch@0 {
 			compatible = "mediatek,mt6580-touch";
-			vtouch-supply = <&mt_pmic_vgp1_ldo_reg>;
 		};
 		accdet: accdet {
 			compatible = "mediatek,mt6580-accdet";

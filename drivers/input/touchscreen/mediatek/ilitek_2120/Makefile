@@ -7,7 +7,7 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 
 obj-y += ilitek_lim.o \
-               ilitek_hall.o \
+         ilitek_hall.o \
 		 ilitek_sensor_test.o \
 		 ilitek_tool.o \
 		 ilitek_update.o \

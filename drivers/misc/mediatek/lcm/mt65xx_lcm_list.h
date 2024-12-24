@@ -85,7 +85,6 @@ extern LCM_DRIVER hsd070pfw3_8135_lcm_drv;
 extern LCM_DRIVER cm_n070ice_dsi_vdo_lcm_drv;
 extern LCM_DRIVER ej101ia_lcm_drv;
 extern LCM_DRIVER scf0700m48ggu02_lcm_drv;
-extern LCM_DRIVER hx8392a_dsi_cmd_fwvgap_lcm_drv;
 extern LCM_DRIVER nt35510_fwvga_lcm_drv;
 #if defined(GN_SSD2825_SMD_S6E8AA)
 extern LCM_DRIVER gn_ssd2825_smd_s6e8aa;
@@ -272,6 +271,7 @@ extern LCM_DRIVER auo_wuxga_dsi_vdo_lcm_drv;
 extern LCM_DRIVER ili9806e_dsi_vdo_tcl_blu5039_drv;
 extern LCM_DRIVER otm8019a_dsi_vdo_boyi_t50m_drv;
 extern LCM_DRIVER ili9881c_hd_dsi_vdo_ilitek_nt50358_3lane_lcm_drv;
+extern LCM_DRIVER oradt_hd720_dsi_cmd_lcm_drv;
 #ifdef BUILD_LK
 extern void mdelay(unsigned long msec);
 #endif
