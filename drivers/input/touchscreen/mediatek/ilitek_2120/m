@@ -1,0 +1,6 @@
+device/mediatek/common/device.mk:3641: MTK_MOBILE_MANAGEMENT is yes
+12:17:43 Got signal: interrupt
+12:17:43 Error dumping make vars: signal: interrupt
+
+[0;31m#### failed to build some targets  ####[00m
+
